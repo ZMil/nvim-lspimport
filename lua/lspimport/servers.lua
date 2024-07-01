@@ -47,18 +47,26 @@ local function ruff_server()
     }
 end
 
+local function string_in_table(str, tbl)
+    for _, value in ipairs(tbl) do
+        if string.lower(value) == string.lower(str) then
+            return true
+        end
+    end
+    return false
+end
+
 
 ---Returns a server class.
 ---@param diagnostics table[vim.Diagnostic]
 ---@return lspimport.Server|nil
-function M.get_servers(diagnostics)
+function M.get_servers(diagnostics, opts)
     local servers = {}
     for _, diagnostic in ipairs(diagnostics) do
-        -- print('diagnostic', vim.inspect(diagnostic))
-        if diagnostic.source == "Pyright" then
+        if string_in_table("pyright", opts.lsps) and diagnostic.source == "Pyright" then
             table.insert(servers, pyright_server())
         end
-        if diagnostic.source == "Ruff" then
+        if string_in_table("ruff", opts.lsps) and diagnostic.source == "Ruff" then
             table.insert(servers, ruff_server())
         end
     end

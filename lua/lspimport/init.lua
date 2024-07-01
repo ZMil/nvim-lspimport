@@ -1,7 +1,13 @@
 local servers = require("lspimport.servers")
 local ui = require("lspimport.ui")
+local config = require("lspimport.config")
 
 local LspImport = {}
+
+LspImport.setup = function (opts)
+    config.setup(opts)
+    LspImport.opts = config.opts
+end
 
 ---@return vim.Diagnostic[]
 local get_unresolved_import_errors = function()
@@ -10,7 +16,7 @@ local get_unresolved_import_errors = function()
     if vim.tbl_isempty(diagnostics) then
         return {}
     end
-    local servers_list = servers.get_servers(diagnostics)
+    local servers_list = servers.get_servers(diagnostics, LspImport.opts)
     if servers_list == nil then
         return {}
     end
@@ -119,7 +125,8 @@ local lsp_completion_handler = function(servers_list, result, unresolved_import,
     if #items == 1 then
         resolve_import(items[1], bufnr)
     else
-        local item_texts = ui.create_items_text_with_header(items, unresolved_import, source)
+        print("LspImport.opts", LspImport.opts)
+        local item_texts = ui.create_items_text_with_header(items, unresolved_import, source, LspImport.opts)
         ui.create_floating_window(item_texts)
         ui.handle_floating_window_selection(items, bufnr, resolve_import)
     end
@@ -156,7 +163,7 @@ local lsp_completion = function(diagnostics)
         vim.notify("cannot find diagnostic symbol")
         return
     end
-    local servers_list = servers.get_servers(diagnostics)
+    local servers_list = servers.get_servers(diagnostics, LspImport.opts)
     if servers_list == nil or vim.tbl_isempty(servers_list) then
         vim.notify("cannot find server implementation for lsp import")
         return
