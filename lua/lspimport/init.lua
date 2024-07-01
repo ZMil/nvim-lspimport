@@ -10,26 +10,38 @@ local get_unresolved_import_errors = function()
     if vim.tbl_isempty(diagnostics) then
         return {}
     end
+    local servers_list = servers.get_servers(diagnostics)
+    if servers_list == nil then
+        return {}
+    end
+    if vim.tbl_isempty(servers_list) then
+        return {}
+    end
     return vim.tbl_filter(function(diagnostic)
-        local server = servers.get_server(diagnostic)
-        if server == nil then
-            return false
+        local all_false = true
+        for _, server in ipairs(servers_list) do
+            if server.is_unresolved_import_error(diagnostic) then
+                all_false = false
+                break
+            end
         end
-        return server.is_unresolved_import_error(diagnostic)
+        return all_false == false
     end, diagnostics)
 end
 
 ---@param diagnostics vim.Diagnostic[]
----@return vim.Diagnostic|nil
-local get_diagnostic_under_cursor = function(diagnostics)
+---@return table[vim.Diagnostic]
+local get_diagnostics_under_cursor = function(diagnostics)
     local cursor = vim.api.nvim_win_get_cursor(0)
     local row, col = cursor[1] - 1, cursor[2]
+    local results = {}
     for _, d in ipairs(diagnostics) do
-        if d.lnum <= row and d.col <= col and d.end_lnum >= row and d.end_col >= col then
-            return d
+        if d.lnum <= row and d.end_lnum >= row then
+            table.insert(results, d)
         end
     end
-    return nil
+
+    return results
 end
 
 ---@param result vim.lsp.CompletionResult Result of `textDocument/completion`
@@ -43,16 +55,27 @@ local lsp_to_complete_items = function(result, prefix)
     end
 end
 
+local is_auto_completion_item = function(servers_list, item)
+    local is_any_true = false
+    for _, server in ipairs(servers_list) do
+        if server.is_auto_import_completion_item(item) then
+            is_any_true = true
+            -- break -- Exit the loop early if any server returns true
+        end
+    end
+    return is_any_true
+end
+
 ---@param server lspimport.Server
 ---@param result lsp.CompletionList|lsp.CompletionItem[] Result of `textDocument/completion`
 ---@param unresolved_import string
 ---@return table[]
-local get_auto_import_complete_items = function(server, result, unresolved_import)
+local get_auto_import_complete_items = function(servers_list, result, unresolved_import)
     local items = lsp_to_complete_items(result, unresolved_import)
     if vim.tbl_isempty(items) then
         return {}
     end
-    return vim.tbl_filter(function(item)
+    vim.tbl_filter(function(item)
         return item.word == unresolved_import
             and item.user_data
             and item.user_data.nvim
@@ -61,8 +84,11 @@ local get_auto_import_complete_items = function(server, result, unresolved_impor
             and item.user_data.nvim.lsp.completion_item.labelDetails.description
             and item.user_data.nvim.lsp.completion_item.additionalTextEdits
             and not vim.tbl_isempty(item.user_data.nvim.lsp.completion_item.additionalTextEdits)
-            and server.is_auto_import_completion_item(item)
+            -- and server.is_auto_import_completion_item(item)
+            and is_auto_completion_item(servers_list, item)
     end, items)
+    -- print("items", vim.inspect(items))
+    return items
 end
 
 ---@param item any|nil
@@ -79,51 +105,85 @@ end
 ---@param result lsp.CompletionList|lsp.CompletionItem[] Result of `textDocument/completion`
 ---@param unresolved_import string
 ---@param bufnr integer
-local lsp_completion_handler = function(server, result, unresolved_import, bufnr)
+local lsp_completion_handler = function(servers_list, result, unresolved_import, bufnr, source)
     if vim.tbl_isempty(result or {}) then
         vim.notify("no import found for " .. unresolved_import)
         return
     end
-    local items = get_auto_import_complete_items(server, result, unresolved_import)
+    local items = get_auto_import_complete_items(servers_list, result, unresolved_import)
     if vim.tbl_isempty(items) then
         vim.notify("no import found for " .. unresolved_import)
         return
     end
+    print("source", source)
     if #items == 1 then
         resolve_import(items[1], bufnr)
     else
-        local item_texts = ui.create_items_text_with_header(items, unresolved_import)
+        local item_texts = ui.create_items_text_with_header(items, unresolved_import, source)
         ui.create_floating_window(item_texts)
         ui.handle_floating_window_selection(items, bufnr, resolve_import)
     end
 end
 
----@param diagnostic vim.Diagnostic
-local lsp_completion = function(diagnostic)
-    local unresolved_import = vim.api.nvim_buf_get_text(
-        diagnostic.bufnr,
-        diagnostic.lnum,
-        diagnostic.col,
-        diagnostic.end_lnum,
-        diagnostic.end_col,
-        {}
-    )
-    if vim.tbl_isempty(unresolved_import) then
+---@param diagnostics table[vim.Diagnostic]
+local lsp_completion = function(diagnostics)
+    local unresolved_imports = {}
+    local import_map = {}
+
+    for _, diagnostic in ipairs(diagnostics) do
+        local unresolved_import = vim.api.nvim_buf_get_text(
+            diagnostic.bufnr,
+            diagnostic.lnum,
+            diagnostic.col,
+            diagnostic.end_lnum,
+            diagnostic.end_col,
+            {}
+        )
+        if not vim.tbl_isempty(unresolved_import) then
+            local key = unresolved_import[1]
+            local source = diagnostic.source
+
+            if not import_map[key] then
+                import_map[key] = { key, source }
+                table.insert(unresolved_imports, import_map[key])
+            else
+                import_map[key][2] = import_map[key][2] .. ", " .. source
+            end
+        end
+    end
+
+    if vim.tbl_isempty(unresolved_imports) then
         vim.notify("cannot find diagnostic symbol")
         return
     end
-    local server = servers.get_server(diagnostic)
-    if server == nil then
+    local servers_list = servers.get_servers(diagnostics)
+    if servers_list == nil or vim.tbl_isempty(servers_list) then
         vim.notify("cannot find server implementation for lsp import")
         return
     end
-    local params = {
-        textDocument = vim.lsp.util.make_text_document_params(0),
-        position = { line = diagnostic.lnum, character = diagnostic.end_col },
-    }
-    return vim.lsp.buf_request(diagnostic.bufnr, "textDocument/completion", params, function(_, result)
-        lsp_completion_handler(server, result, unresolved_import[1], diagnostic.bufnr)
-    end)
+
+    for _, unresolved_import in ipairs(unresolved_imports) do
+        local params = {
+            textDocument = vim.lsp.util.make_text_document_params(0),
+            position = { line = diagnostics[1].lnum, character = diagnostics[1].end_col },
+        }
+        vim.lsp.buf_request(0, "textDocument/completion", params, function(_, result)
+            lsp_completion_handler(
+                servers_list,
+                result,
+                unresolved_import[1],
+                diagnostics[1].bufnr,
+                unresolved_import[2]
+            )
+        end)
+    end
+    -- local params = {
+    --     textDocument = vim.lsp.util.make_text_document_params(0),
+    --     position = { line = diagnostic.lnum, character = diagnostic.end_col },
+    -- }
+    -- return vim.lsp.buf_request(diagnostic.bufnr, "textDocument/completion", params, function(_, result)
+    --     lsp_completion_handler(servers_list, result, unresolved_import[1], diagnostic.bufnr)
+    -- end)
 end
 
 LspImport.import = function()
@@ -133,8 +193,8 @@ LspImport.import = function()
             vim.notify("no unresolved import error")
             return
         end
-        local diagnostic = get_diagnostic_under_cursor(diagnostics)
-        lsp_completion(diagnostic or diagnostics[1])
+        local diagnostics = get_diagnostics_under_cursor(diagnostics)
+        lsp_completion(diagnostics or diagnostics)
     end)
 end
 

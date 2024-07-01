@@ -16,6 +16,7 @@ local function pyright_server()
     ---@param item any
     ---@return boolean
     local function is_auto_import_completion_item(item)
+        print('pyright item')
         return item.menu == "Auto-import"
     end
 
@@ -25,13 +26,43 @@ local function pyright_server()
     }
 end
 
----Returns a server class.
----@param diagnostic vim.Diagnostic
----@return lspimport.Server|nil
-function M.get_server(diagnostic)
-    if diagnostic.source == "Pyright" then
-        return pyright_server()
+local function ruff_server()
+    ---@param diagnostic vim.Diagnostic
+    ---@return boolean
+    local function is_unresolved_import_error(diagnostic)
+        print(diagnostic.code)
+        return diagnostic.code == "F821"
     end
+
+    ---@param item any
+    ---@return boolean
+    local function is_auto_import_completion_item(item)
+        print('ruff item')
+        return item.menu == "Auto-import"
+    end
+
+    return {
+        is_unresolved_import_error = is_unresolved_import_error,
+        is_auto_import_completion_item = is_auto_import_completion_item,
+    }
+end
+
+
+---Returns a server class.
+---@param diagnostics table[vim.Diagnostic]
+---@return lspimport.Server|nil
+function M.get_servers(diagnostics)
+    local servers = {}
+    for _, diagnostic in ipairs(diagnostics) do
+        -- print('diagnostic', vim.inspect(diagnostic))
+        if diagnostic.source == "Pyright" then
+            table.insert(servers, pyright_server())
+        end
+        if diagnostic.source == "Ruff" then
+            table.insert(servers, ruff_server())
+        end
+    end
+    return servers
 end
 
 return M

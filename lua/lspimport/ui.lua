@@ -4,24 +4,33 @@ local TITLE_NAMESPACE = 1
 local SELECTABLE_NAMESPACE = 2
 
 ---@param item any
-local format_import = function(item)
-    return item.user_data.nvim.lsp.completion_item.labelDetails.description .. " [" .. item.kind .. "]"
+local format_import = function(item, source)
+    return item.user_data.nvim.lsp.completion_item.labelDetails.description
+        .. " ["
+        .. item.kind
+        .. "]"
+        .. " {"
+        .. source
+        .. "}"
 end
 
 ---@param items table[]
 ---@param classname string
 ---@return table[string]
-M.create_items_text_with_header = function(items, classname)
+M.create_items_text_with_header = function(items, classname, source)
+    -- print("servers_list", vim.inspect(servers_list))
+    -- print("items", vim.inspect(items))
+    print("source", source)
     local items_text = { "Import " .. classname .. " from:" }
     for i, item in ipairs(items) do
-        table.insert(items_text, " " .. i .. ". " .. format_import(item))
+        table.insert(items_text, " " .. i .. ". " .. format_import(item, source))
     end
     return items_text
 end
 
 ---@param items_text table[string]
 ---@return integer
- M.create_floating_window = function(items_text)
+M.create_floating_window = function(items_text)
     local buf = vim.api.nvim_create_buf(false, true)
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, items_text)
 
