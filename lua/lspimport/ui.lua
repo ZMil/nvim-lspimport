@@ -5,13 +5,10 @@ local SELECTABLE_NAMESPACE = 2
 
 ---@param item any
 local format_import = function(item, source)
-    return item.user_data.nvim.lsp.completion_item.labelDetails.description
-        .. " ["
-        .. item.kind
-        .. "]"
-        .. " {"
-        .. source
-        .. "}"
+    print("item", vim.inspect(item))
+    local label = item.user_data.nvim.lsp.completion_item.label
+        or item.user_data.nvim.lsp.completion_item.labelDetails.description
+    return label .. " [" .. item.kind .. "]" .. " {" .. source .. "}"
 end
 
 ---@param items table[]
