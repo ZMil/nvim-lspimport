@@ -5,8 +5,8 @@ local SELECTABLE_NAMESPACE = 2
 
 ---@param item any
 local format_import = function(item, source, opts)
-    local label = item.user_data.nvim.lsp.completion_item.label
-        or item.user_data.nvim.lsp.completion_item.labelDetails.description
+    local label = item.user_data.nvim.lsp.completion_item.labelDetails.description
+        or item.user_data.nvim.lsp.completion_item.label
     local import_string = label .. " [" .. item.kind .. "]"
     if opts.show_source_lsps then
         import_string = import_string .. " {" .. source .. "}"
