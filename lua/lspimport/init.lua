@@ -4,7 +4,7 @@ local config = require("lspimport.config")
 
 local LspImport = {}
 
-LspImport.setup = function (opts)
+LspImport.setup = function(opts)
     config.setup(opts)
     LspImport.opts = config.opts
 end
@@ -90,10 +90,8 @@ local get_auto_import_complete_items = function(servers_list, result, unresolved
             and item.user_data.nvim.lsp.completion_item.labelDetails.description
             and item.user_data.nvim.lsp.completion_item.additionalTextEdits
             and not vim.tbl_isempty(item.user_data.nvim.lsp.completion_item.additionalTextEdits)
-            -- and server.is_auto_import_completion_item(item)
             and is_auto_completion_item(servers_list, item)
     end, items)
-    -- print("items", vim.inspect(items))
     return items
 end
 
@@ -121,15 +119,18 @@ local lsp_completion_handler = function(servers_list, result, unresolved_import,
         vim.notify("no import found for " .. unresolved_import)
         return
     end
-    print("source", source)
     if #items == 1 then
         resolve_import(items[1], bufnr)
     else
-        print("LspImport.opts", LspImport.opts)
         local item_texts = ui.create_items_text_with_header(items, unresolved_import, source, LspImport.opts)
         ui.create_floating_window(item_texts)
         ui.handle_floating_window_selection(items, bufnr, resolve_import)
     end
+end
+
+local function extract_base_name(str)
+    local base_name = str:match("^(%a+)")
+    return base_name
 end
 
 ---@param diagnostics table[vim.Diagnostic]
@@ -147,7 +148,7 @@ local lsp_completion = function(diagnostics)
             {}
         )
         if not vim.tbl_isempty(unresolved_import) then
-            local key = unresolved_import[1]
+            local key = extract_base_name(unresolved_import[1])
             local source = diagnostic.source
 
             if not import_map[key] then
@@ -163,7 +164,9 @@ local lsp_completion = function(diagnostics)
         vim.notify("cannot find diagnostic symbol")
         return
     end
+
     local servers_list = servers.get_servers(diagnostics, LspImport.opts)
+
     if servers_list == nil or vim.tbl_isempty(servers_list) then
         vim.notify("cannot find server implementation for lsp import")
         return
@@ -200,8 +203,8 @@ LspImport.import = function()
             vim.notify("no unresolved import error")
             return
         end
-        local diagnostics = get_diagnostics_under_cursor(diagnostics)
-        lsp_completion(diagnostics or diagnostics)
+        local diagnostics_under_cursor = get_diagnostics_under_cursor(diagnostics)
+        lsp_completion(diagnostics_under_cursor or { diagnostics[1] })
     end)
 end
 

@@ -16,7 +16,6 @@ local function pyright_server()
     ---@param item any
     ---@return boolean
     local function is_auto_import_completion_item(item)
-        print('pyright item')
         return item.menu == "Auto-import"
     end
 
@@ -30,14 +29,12 @@ local function ruff_server()
     ---@param diagnostic vim.Diagnostic
     ---@return boolean
     local function is_unresolved_import_error(diagnostic)
-        print(diagnostic.code)
         return diagnostic.code == "F821"
     end
 
     ---@param item any
     ---@return boolean
     local function is_auto_import_completion_item(item)
-        print('ruff item')
         return item.menu == "Auto-import"
     end
 
@@ -46,6 +43,27 @@ local function ruff_server()
         is_auto_import_completion_item = is_auto_import_completion_item,
     }
 end
+
+local function mypy_server()
+    ---@param diagnostic vim.Diagnostic
+    ---@return boolean
+    local function is_unresolved_import_error(diagnostic)
+        return diagnostic.code == "name-defined"
+    end
+
+    ---@param item any
+    ---@return boolean
+    local function is_auto_import_completion_item(item)
+        return item.menu == "Auto-import"
+    end
+
+    return {
+        is_unresolved_import_error = is_unresolved_import_error,
+        is_auto_import_completion_item = is_auto_import_completion_item,
+    }
+end
+
+
 
 local function string_in_table(str, tbl)
     for _, value in ipairs(tbl) do
@@ -68,6 +86,9 @@ function M.get_servers(diagnostics, opts)
         end
         if string_in_table("ruff", opts.lsps) and diagnostic.source == "Ruff" then
             table.insert(servers, ruff_server())
+        end
+        if string_in_table("mypy", opts.lsps) and string.lower(diagnostic.source) == "mypy" then
+            table.insert(servers, mypy_server())
         end
     end
     return servers
